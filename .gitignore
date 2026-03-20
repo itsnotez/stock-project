@@ -1,0 +1,6 @@
+server/news-cache.json
+server/push-subscriptions.json
+server/.env
+node_modules/
+client/.env.local
+.DS_Store
