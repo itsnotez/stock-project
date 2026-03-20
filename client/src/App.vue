@@ -24,10 +24,18 @@
           @click="setName('네이버')"
           :class="{ 'nav-active': name === '네이버' }"
         >
-          삼성전자
+          네이버
+        </li>
+        <li
+          @click="setName('경제뉴스')"
+          :class="{ 'nav-active': name === '경제뉴스' }"
+        >
+          경제 뉴스
         </li>
       </ul>
     </nav>
+    <NewsTab v-if="name === '경제뉴스'" />
+    <template v-if="name !== '경제뉴스'">
     <div class="back" v-if="loading">
       <div class="background">
         <div class="vs-loading default"></div>
@@ -84,6 +92,7 @@
         </tbody>
       </table>
     </div>
+  </template>
   </article>
 </template>
 
@@ -91,10 +100,11 @@
 import * as d3 from "d3";
 import { onMounted, ref } from "vue";
 import axios from "axios";
+import NewsTab from "./components/NewsTab.vue";
 
 export default {
   name: "App",
-  components: {},
+  components: { NewsTab },
   setup() {
     let name = ref("삼성전자");
     let message = ref("");
@@ -142,6 +152,10 @@ export default {
         .attr("dy", "-2em")
         .text("목표까지");
     };
+
+    const setName = (newName) => { name.value = newName; };
+
+    return { name, message, targetCur, herestk, herestksise, loading, setName, draw };
   },
 };
 </script>
