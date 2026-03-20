@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require("express");
 const app = express();
 const axios = require("axios");
@@ -10,8 +11,15 @@ const nightmare = Nightmare({
 
 const cors = require("cors");
 app.use(cors());
+app.use(express.json());
 
 const vo = require("vo");
+const cron = require('node-cron');
+const fs = require('fs');
+const path = require('path');
+const { fetchHeadlines } = require('./news-crawler');
+const { summarizeHeadlines, saveCache, CACHE_PATH } = require('./news-summarizer');
+const { addSubscription, removeSubscription, sendPushNotifications } = require('./push-manager');
 const DAY_BASE_URL = "https://finance.naver.com/item/main.nhn?code=";
 const SISE_BASE_URL = "https://finance.naver.com/item/sise_day.nhn?code=";
 const companyList = [
@@ -108,6 +116,65 @@ app.get("/stocks/days", (req, res) => {
   vo(run)(function (err, data) {
     if (err) console.log(`err : ${err}`);
     res.send(data);
+  });
+});
+
+async function collectNews() {
+  console.log('[news] Starting news collection...');
+  try {
+    const headlines = await fetchHeadlines();
+    const summarized = await summarizeHeadlines(headlines);
+    saveCache(summarized);
+    console.log(`[news] Collected ${summarized.length} news items`);
+  } catch (err) {
+    console.error('[news] Collection failed:', err.message);
+  }
+}
+
+app.get('/api/news', async (req, res) => {
+  try {
+    if (!fs.existsSync(CACHE_PATH)) {
+      await collectNews();
+    } else {
+      const cache = JSON.parse(fs.readFileSync(CACHE_PATH, 'utf-8'));
+      const ageMs = Date.now() - new Date(cache.updatedAt).getTime();
+      const isStale = ageMs > 24 * 60 * 60 * 1000;
+      if (isStale) {
+        collectNews(); // background refresh, don't await
+      }
+    }
+    const cache = JSON.parse(fs.readFileSync(CACHE_PATH, 'utf-8'));
+    res.json(cache);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load news' });
+  }
+});
+
+app.post('/api/push/subscribe', (req, res) => {
+  const subscription = req.body;
+  if (!subscription || !subscription.endpoint) {
+    return res.status(400).json({ error: 'Invalid subscription' });
+  }
+  addSubscription(subscription);
+  res.status(201).json({ message: 'Subscribed' });
+});
+
+app.delete('/api/push/subscribe', (req, res) => {
+  const { endpoint } = req.body;
+  if (!endpoint) return res.status(400).json({ error: 'Missing endpoint' });
+  removeSubscription(endpoint);
+  res.json({ message: 'Unsubscribed' });
+});
+
+// Collect news every day at 07:50
+cron.schedule('50 7 * * *', collectNews);
+
+// Send push notifications every day at 08:00
+cron.schedule('0 8 * * *', () => {
+  sendPushNotifications({
+    title: '오늘의 경제 뉴스',
+    body: '오늘의 경제 뉴스가 준비됐습니다.',
+    url: 'http://localhost:8080',
   });
 });
 
