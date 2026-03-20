@@ -1,14 +1,14 @@
 require('dotenv').config();
-const Anthropic = require('@anthropic-ai/sdk');
+const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
 const CACHE_PATH = path.join(__dirname, 'news-cache.json');
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini';
 
 async function summarizeHeadlines(headlines) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.warn('[news-summarizer] No ANTHROPIC_API_KEY — skipping summarization');
+  if (!process.env.OPENROUTER_API_KEY) {
+    console.warn('[news-summarizer] No OPENROUTER_API_KEY — skipping summarization');
     return headlines.map(h => ({ ...h, summary: null }));
   }
 
@@ -23,13 +23,22 @@ JSON 배열로만 응답해. 각 항목: {"headline": "원문", "summary": "한�
 ${headlineList}`;
 
   try {
-    const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: prompt }],
-    });
+    const response = await axios.post(
+      'https://openrouter.ai/api/v1/chat/completions',
+      {
+        model: OPENROUTER_MODEL,
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }],
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
 
-    const raw = message.content[0].text.trim();
+    const raw = response.data.choices[0].message.content.trim();
     const jsonMatch = raw.match(/\[[\s\S]*\]/);
     if (!jsonMatch) throw new Error('No JSON array in response');
 
@@ -39,7 +48,7 @@ ${headlineList}`;
       summary: summaries[i]?.summary || null,
     }));
   } catch (err) {
-    console.error('[news-summarizer] Claude API error:', err.message);
+    console.error('[news-summarizer] OpenRouter API error:', err.message);
     return headlines.map(h => ({ ...h, summary: null }));
   }
 }
